@@ -26,7 +26,7 @@ A real-time American Sign Language (ASL) detection system that uses computer vis
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/20125A0511/ASL.git
+git clone https://github.com/20125A0511/ASL-Detection.git
 cd ASL
 ```
 
