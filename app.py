@@ -23,9 +23,7 @@ os.makedirs('model/keypoint_classifier', exist_ok=True)
 os.makedirs('static', exist_ok=True)
 
 # Create cvfpscalc.py if not exists
-if not os.path.exists('utils/cvfpscalc.py'):
-    with open('utils/cvfpscalc.py', 'w') as f:
-        f.write('''
+cvfpscalc_content = '''
 import time
 import cv2 as cv
 
@@ -49,12 +47,9 @@ class CvFpsCalc(object):
         fps_rounded = round(fps, 2)
 
         return fps_rounded
-''')
+'''
 
-# Create keypoint_classifier.py if not exists
-if not os.path.exists('model/keypoint_classifier/keypoint_classifier.py'):
-    with open('model/keypoint_classifier/keypoint_classifier.py', 'w') as f:
-        f.write('''
+keypoint_classifier_content = '''
 import numpy as np
 import tensorflow.lite as tflite
 import os
@@ -102,12 +97,9 @@ class KeyPointClassifier(object):
 
     def get_confidence(self):
         return float(self._confidence)
-''')
+'''
 
-# Create keypoint_classifier_label.csv if not exists
-if not os.path.exists('model/keypoint_classifier/keypoint_classifier_label.csv'):
-    with open('model/keypoint_classifier/keypoint_classifier_label.csv', 'w') as f:
-        f.write('''A
+keypoint_classifier_label_content = '''A
 B
 C
 D
@@ -133,11 +125,25 @@ W
 X
 Y
 Z
-''')
+'''
 
-# Create HTML templates
-with open('templates/index.html', 'w') as f:
-    f.write('''
+# Create files only if they don't exist
+if not os.path.exists('utils/cvfpscalc.py'):
+    with open('utils/cvfpscalc.py', 'w') as f:
+        f.write(cvfpscalc_content)
+
+if not os.path.exists('model/keypoint_classifier/keypoint_classifier.py'):
+    with open('model/keypoint_classifier/keypoint_classifier.py', 'w') as f:
+        f.write(keypoint_classifier_content)
+
+if not os.path.exists('model/keypoint_classifier/keypoint_classifier_label.csv'):
+    with open('model/keypoint_classifier/keypoint_classifier_label.csv', 'w') as f:
+        f.write(keypoint_classifier_label_content)
+
+# Only create index.html if it doesn't exist
+if not os.path.exists('templates/index.html'):
+    with open('templates/index.html', 'w') as f:
+        f.write('''
 <!DOCTYPE html>
 <html>
 <head>
@@ -254,20 +260,24 @@ with open('templates/index.html', 'w') as f:
             statusEl.textContent = 'Disconnected';
         });
         
-        socket.on('connection_response', function(data) {
-            statusEl.textContent = data.status;
+        // Handle recognized text updates
+        socket.on('text_update', function(data) {
+            textDisplay.textContent = data.text;
+            if (data.text) {
+                textHistory += data.text;
+                textHistory_el.textContent = textHistory;
+            }
         });
         
-        // Button handlers
+        // Button event listeners
         document.getElementById('space-btn').addEventListener('click', function() {
-            addToHistory(' ');
+            textHistory += ' ';
+            textHistory_el.textContent = textHistory;
         });
         
         document.getElementById('backspace-btn').addEventListener('click', function() {
-            if (textHistory.length > 0) {
-                textHistory = textHistory.slice(0, -1);
-                textHistory_el.textContent = textHistory;
-            }
+            textHistory = textHistory.slice(0, -1);
+            textHistory_el.textContent = textHistory;
         });
         
         document.getElementById('clear-btn').addEventListener('click', function() {
@@ -276,81 +286,20 @@ with open('templates/index.html', 'w') as f:
         });
         
         document.getElementById('save-btn').addEventListener('click', function() {
-            saveText(textHistory);
-        });
-        
-        // Add text to history
-        function addToHistory(text) {
-            if (text) {
-                textHistory += text;
-                textHistory_el.textContent = textHistory;
-            }
-        }
-        
-        // Save text to server
-        function saveText(text) {
-            fetch('/save_and_exit', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ text: text }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('Text saved successfully!');
-                    window.location.href = '/exit';
-                } else {
-                    alert('Error saving text: ' + data.message);
-                }
-            })
-            .catch(error => {
-                alert('Error: ' + error);
-            });
-        }
-        
-        // Letter recognition variables
-        let lastLetter = '';
-        let lastAddedLetter = '';
-        let letterHeldCount = 0;
-        let steadyStateReached = false;
-        const LETTER_HOLD_THRESHOLD = 10; // Number of consecutive same letter recognitions
-        const STEADY_STATE_COOLDOWN = 2000; // 2 seconds before accepting same letter again
-        let lastLetterTime = 0;
-        
-        // Listen for letter updates from server
-        socket.on('text_update', function(data) {
-            const currentTime = Date.now();
-            const letterFromServer = data.text;
-            
-            // Update the display with the current recognized letter
-            if (letterFromServer) {
-                textDisplay.textContent = letterFromServer;
-                
-                // Logic for determining when to add a letter to history
-                if (letterFromServer === lastLetter) {
-                    // Same letter detected
-                    letterHeldCount++;
-                    
-                    // If we reach threshold and haven't added this letter yet
-                    if (letterHeldCount >= LETTER_HOLD_THRESHOLD && !steadyStateReached) {
-                        addToHistory(letterFromServer);
-                        lastAddedLetter = letterFromServer;
-                        steadyStateReached = true;
-                        lastLetterTime = currentTime;
+            if (textHistory) {
+                fetch('/save_and_exit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({text: textHistory}),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.href = '/exit';
                     }
-                } else {
-                    // New letter detected, reset counters
-                    lastLetter = letterFromServer;
-                    letterHeldCount = 1;
-                    steadyStateReached = false;
-                }
-            }
-            
-            // Reset steady state after cooldown to allow same letter again
-            if (steadyStateReached && (currentTime - lastLetterTime > STEADY_STATE_COOLDOWN)) {
-                steadyStateReached = false;
+                });
             }
         });
     </script>
