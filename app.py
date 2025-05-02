@@ -429,6 +429,11 @@ last_prediction = None
 PREDICTION_THRESHOLD = 0.5  # Lower threshold for easier detection
 PREDICTION_STABILITY = 3  # Number of consistent predictions needed before changing
 
+# Training mode variables
+is_training_mode = False
+current_training_letter = None
+training_samples = []
+
 # Store recent predictions for stability
 recent_predictions = []
 
@@ -538,8 +543,22 @@ def is_stable_prediction(prediction):
     # Check if all recent predictions are the same
     return len(recent_predictions) >= PREDICTION_STABILITY and all(p == recent_predictions[0] for p in recent_predictions)
 
+def save_training_sample(landmark_list, letter):
+    """Save a training sample to the keypoint.csv file"""
+    try:
+        # Convert landmark list to string format
+        landmark_str = ','.join(map(str, landmark_list))
+        
+        # Append to CSV file
+        with open('model/keypoint_classifier/keypoint.csv', 'a') as f:
+            f.write(f"{letter},{landmark_str}\n")
+        return True
+    except Exception as e:
+        print(f"Error saving training sample: {str(e)}")
+        return False
+
 def generate_frames():
-    global last_prediction_time, last_prediction, recognized_text
+    global last_prediction_time, last_prediction, recognized_text, current_training_letter
     
     if not init_camera():
         print("Error: Could not initialize camera")
@@ -587,28 +606,37 @@ def generate_frames():
                         # Pre-process landmarks
                         pre_processed_landmark_list = pre_process_landmark(landmark_list)
                         
-                        # Classify hand sign
-                        hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
-                        
-                        if hand_sign_id >= 0 and hand_sign_id < len(keypoint_classifier_labels):
-                            # Get confidence score
-                            confidence = keypoint_classifier.get_confidence()
-                            
-                            # Get the predicted letter
-                            predicted_letter = keypoint_classifier_labels[hand_sign_id]
-                            
-                            # Display prediction and confidence on frame
-                            cv.putText(frame, f"{predicted_letter} ({confidence:.2f})", 
-                                     (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                            
-                            # Emit prediction to frontend if confidence is high enough
-                            if confidence > 0.3:  # Lowered threshold for better detection
-                                socketio.emit('text_update', {
-                                    'text': predicted_letter,
-                                    'confidence': float(confidence),
-                                    'class_id': int(hand_sign_id)
+                        if is_training_mode and current_training_letter:
+                            # Save training sample
+                            if save_training_sample(pre_processed_landmark_list, current_training_letter):
+                                socketio.emit('training_update', {
+                                    'success': True,
+                                    'letter': current_training_letter
                                 })
-                                print(f"Emitted prediction: {predicted_letter} (Class: {hand_sign_id}, Confidence: {confidence:.2f})")
+                            current_training_letter = None
+                        else:
+                            # Classify hand sign
+                            hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
+                            
+                            if hand_sign_id >= 0 and hand_sign_id < len(keypoint_classifier_labels):
+                                # Get confidence score
+                                confidence = keypoint_classifier.get_confidence()
+                                
+                                # Get the predicted letter
+                                predicted_letter = keypoint_classifier_labels[hand_sign_id]
+                                
+                                # Display prediction and confidence on frame
+                                cv.putText(frame, f"{predicted_letter} ({confidence:.2f})", 
+                                         (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                                
+                                # Emit prediction to frontend if confidence is high enough
+                                if confidence > 0.3:  # Lowered threshold for better detection
+                                    socketio.emit('text_update', {
+                                        'text': predicted_letter,
+                                        'confidence': float(confidence),
+                                        'class_id': int(hand_sign_id)
+                                    })
+                                    print(f"Emitted prediction: {predicted_letter} (Class: {hand_sign_id}, Confidence: {confidence:.2f})")
                             
                     except Exception as e:
                         print(f"Error in hand sign classification: {str(e)}")
@@ -683,6 +711,25 @@ def handle_connect():
 def handle_disconnect():
     print('Client disconnected')
     cleanup()
+
+@socketio.on('start_training')
+def handle_start_training():
+    global is_training_mode
+    is_training_mode = True
+    emit('training_update', {'status': 'Training mode started'})
+
+@socketio.on('stop_training')
+def handle_stop_training():
+    global is_training_mode, current_training_letter
+    is_training_mode = False
+    current_training_letter = None
+    emit('training_update', {'status': 'Training mode stopped'})
+
+@socketio.on('capture_sample')
+def handle_capture_sample(data):
+    global current_training_letter
+    current_training_letter = data['letter']
+    emit('training_update', {'status': f'Ready to capture sample for letter {current_training_letter}'})
 
 def cleanup():
     global cap, hands, recognized_text
