@@ -93,19 +93,6 @@
             <button id="backspace-btn" class="button">Backspace</button>
             <button id="clear-btn" class="button">Clear</button>
             <button id="save-btn" class="button">Save</button>
-            <button id="train-btn" class="button" style="background-color: #2196F3;">Train Dataset</button>
-        </div>
-        
-        <div id="training-ui" style="display: none;">
-            <h2>Training Mode</h2>
-            <p>Current Letter: <span id="current-letter">A</span></p>
-            <p>Samples Collected: <span id="samples-count">0</span></p>
-            <div id="training-progress">
-                <div id="progress-bar" style="width: 0%; height: 20px; background-color: #4CAF50;"></div>
-            </div>
-            <button id="capture-btn" class="button">Capture Sample</button>
-            <button id="next-letter-btn" class="button">Next Letter</button>
-            <button id="stop-training-btn" class="button" style="background-color: #f44336;">Stop Training</button>
         </div>
         
         <p id="status">Waiting for connection...</p>
@@ -225,66 +212,6 @@
             // Reset steady state after cooldown to allow same letter again
             if (steadyStateReached && (currentTime - lastLetterTime > STEADY_STATE_COOLDOWN)) {
                 steadyStateReached = false;
-            }
-        });
-        
-        // Add training mode variables and handlers
-        let isTrainingMode = false;
-        let currentLetterIndex = 0;
-        let samplesCollected = 0;
-        const SAMPLES_PER_LETTER = 10;
-        const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        
-        // Training mode button handler
-        document.getElementById('train-btn').addEventListener('click', function() {
-            isTrainingMode = true;
-            document.getElementById('training-ui').style.display = 'block';
-            document.getElementById('train-btn').style.display = 'none';
-            socket.emit('start_training');
-        });
-        
-        // Stop training button handler
-        document.getElementById('stop-training-btn').addEventListener('click', function() {
-            isTrainingMode = false;
-            document.getElementById('training-ui').style.display = 'none';
-            document.getElementById('train-btn').style.display = 'block';
-            socket.emit('stop_training');
-        });
-        
-        // Capture sample button handler
-        document.getElementById('capture-btn').addEventListener('click', function() {
-            if (isTrainingMode) {
-                socket.emit('capture_sample', { letter: letters[currentLetterIndex] });
-            }
-        });
-        
-        // Next letter button handler
-        document.getElementById('next-letter-btn').addEventListener('click', function() {
-            if (isTrainingMode) {
-                currentLetterIndex = (currentLetterIndex + 1) % letters.length;
-                samplesCollected = 0;
-                updateTrainingUI();
-            }
-        });
-        
-        // Update training UI
-        function updateTrainingUI() {
-            document.getElementById('current-letter').textContent = letters[currentLetterIndex];
-            document.getElementById('samples-count').textContent = samplesCollected;
-            const progress = (samplesCollected / SAMPLES_PER_LETTER) * 100;
-            document.getElementById('progress-bar').style.width = progress + '%';
-        }
-        
-        // Listen for training updates from server
-        socket.on('training_update', function(data) {
-            if (data.success) {
-                samplesCollected++;
-                updateTrainingUI();
-                if (samplesCollected >= SAMPLES_PER_LETTER) {
-                    currentLetterIndex = (currentLetterIndex + 1) % letters.length;
-                    samplesCollected = 0;
-                    updateTrainingUI();
-                }
             }
         });
     </script>
