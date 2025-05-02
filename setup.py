@@ -1,4 +1,129 @@
+import os
 
+def create_directories():
+    # Create necessary directories
+    os.makedirs('templates', exist_ok=True)
+    os.makedirs('utils', exist_ok=True)
+    os.makedirs('model/keypoint_classifier', exist_ok=True)
+    os.makedirs('static', exist_ok=True)
+
+def create_cvfpscalc():
+    if not os.path.exists('utils/cvfpscalc.py'):
+        with open('utils/cvfpscalc.py', 'w') as f:
+            f.write('''
+import time
+import cv2 as cv
+
+class CvFpsCalc(object):
+    def __init__(self, buffer_len=1):
+        self._start_tick = cv.getTickCount()
+        self._freq = 1000.0 / cv.getTickFrequency()
+        self._difftimes = []
+        self._buffer_len = buffer_len
+
+    def get(self):
+        current_tick = cv.getTickCount()
+        different_time = (current_tick - self._start_tick) * self._freq
+        self._start_tick = current_tick
+
+        self._difftimes.append(different_time)
+        if len(self._difftimes) > self._buffer_len:
+            self._difftimes.pop(0)
+
+        fps = 1000.0 / (sum(self._difftimes) / len(self._difftimes))
+        fps_rounded = round(fps, 2)
+
+        return fps_rounded
+''')
+
+def create_keypoint_classifier():
+    if not os.path.exists('model/keypoint_classifier/keypoint_classifier.py'):
+        with open('model/keypoint_classifier/keypoint_classifier.py', 'w') as f:
+            f.write('''
+import numpy as np
+import tensorflow.lite as tflite
+import os
+
+class KeyPointClassifier(object):
+    def __init__(self):
+        self.interpreter = None
+        self.input_details = None
+        self.output_details = None
+        self._confidence = 0.0
+        
+        # Create a simple model for default
+        model_path = os.path.join(os.path.dirname(__file__), 'keypoint_classifier.tflite')
+        
+        # If model doesn't exist, create a dummy model for testing
+        if not os.path.exists(model_path):
+            self.interpreter = None
+        else:
+            # Model loading
+            self.interpreter = tflite.Interpreter(model_path=model_path)
+            self.interpreter.allocate_tensors()
+            self.input_details = self.interpreter.get_input_details()
+            self.output_details = self.interpreter.get_output_details()
+
+    def __call__(self, landmark_list):
+        if self.interpreter is None:
+            self._confidence = 0.9  # Dummy confidence
+            return 0  # Return default class
+            
+        input_details_tensor_index = self.input_details[0]['index']
+        
+        # Inference implementation
+        input_tensor = np.array([landmark_list], dtype=np.float32)
+        self.interpreter.set_tensor(input_details_tensor_index, input_tensor)
+        self.interpreter.invoke()
+
+        output_details_tensor_index = self.output_details[0]['index']
+        result = self.interpreter.get_tensor(output_details_tensor_index)
+        result_index = np.argmax(np.squeeze(result))
+        
+        # Save confidence score
+        self._confidence = np.squeeze(result)[result_index]
+        
+        return result_index
+
+    def get_confidence(self):
+        return float(self._confidence)
+''')
+
+def create_keypoint_classifier_label():
+    if not os.path.exists('model/keypoint_classifier/keypoint_classifier_label.csv'):
+        with open('model/keypoint_classifier/keypoint_classifier_label.csv', 'w') as f:
+            f.write('''A
+B
+C
+D
+E
+F
+G
+H
+I
+J
+K
+L
+M
+N
+O
+P
+Q
+R
+S
+T
+U
+V
+W
+X
+Y
+Z
+''')
+
+def create_templates():
+    if not os.path.exists('templates/index.html'):
+        with open('templates/index.html', 'w') as f:
+            f.write('''
 <!DOCTYPE html>
 <html>
 <head>
@@ -412,3 +537,70 @@
     </script>
 </body>
 </html>
+''')
+
+    if not os.path.exists('templates/exit.html'):
+        with open('templates/exit.html', 'w') as f:
+            f.write('''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Automated AI-Based Sign Language Translator - Exit</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+            text-align: center;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 20px;
+        }
+        .button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Session Ended</h1>
+        <p>Your text has been saved successfully.</p>
+        <p>Thank you for using Automated AI-Based Sign Language Translator.</p>
+        <a href="/" class="button">Start New Session</a>
+    </div>
+</body>
+</html>
+''')
+
+def main():
+    print("Setting up project files...")
+    create_directories()
+    create_cvfpscalc()
+    create_keypoint_classifier()
+    create_keypoint_classifier_label()
+    create_templates()
+    print("Setup complete!")
+
+if __name__ == "__main__":
+    main() 
